@@ -1,2 +1,2 @@
-# information_cochains
-Tools for the decomposition of higher dimensional signals into harmonic modes
+# Information Cochains
+Tools for the decomposition of higher dimensional information signals into harmonic modes
