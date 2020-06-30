@@ -217,13 +217,16 @@ for d in dimensions:
             time1 = perf_counter()
             eigenvalues, eigenvectors = np.linalg.eig(L.todense())
             time2 = perf_counter()
+            smallest_values_indices = np.argsort(
+                eigenvalues)[:stored_eigenvectors]
+            smallest_eigenvectors = eigenvectors[:, smallest_values_indices]
             os.makedirs(f'dim{d}/{scheme}_thresh{threshold}/eigendata')
             np.save(
                 f'dim{d}/{scheme}_thresh{threshold}/eigendata/eigenvalues.npy',
                 eigenvalues)
             np.save(
                 f'dim{d}/{scheme}_thresh{threshold}/eigendata/eigenvectors.npy',
-                np.argsort(eigenvalues)[:stored_eigenvectors])
+                smallest_eigenvectors)
 
             # fourier transforming the information cochains
 
