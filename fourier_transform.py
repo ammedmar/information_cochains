@@ -17,8 +17,7 @@ import os
 import warnings
 warnings.filterwarnings('ignore', message='divide by zero')
 from time import perf_counter
-
-folder = '/Users/anibal/Google Drive/information_cochains'
+import random
 
 
 def import_data(patient, d=3):
@@ -39,11 +38,19 @@ def import_data(patient, d=3):
 
 
 def construct_edge_weights():
-    '''Average over patients in the form of a dict with keys given by pairs (i,j)
+    '''Average over patients in the form of a dict with keys pairs (i,j)
     with 1 < i < j < 20'''
+
     filename = os.path.join(folder, 'connectome/sc_norm_20rois.mat')
     conn = scipy.io.loadmat(filename)
     SC = conn['sc'].sum(axis=2) / 161
+
+    if gaussian_weights:
+        s = SC.std()
+        m = SC.mean()
+        np.random.seed(1)
+        SC = np.random.normal(loc=m, scale=s, size=(20, 20))
+        SC = np.absolute(SC)
 
     edge_weights = {}
     for i in range(20):
@@ -54,9 +61,9 @@ def construct_edge_weights():
 
 
 def construct_simplex_weights(d, r=19, scheme='av'):
-    '''returns the dict with items simplex: weight for each simplex of dimension d
+    '''returns the dict with items simplex: weight for each simplex of dim d
     options: min, max, av for determining the weight of a simplex based on the
-    weight of its edges
+    weight of its edges. If randomize is True then we randomly mix the pairs.
     '''
     edge_weights = construct_edge_weights()
 
@@ -75,6 +82,13 @@ def construct_simplex_weights(d, r=19, scheme='av'):
             spx: sum(edge_weights[edge]
                      for edge in combinations(spx, 2)) / comb(d + 1, 2)
             for spx in tuple(combinations(range(1, r + 2), d + 1))}
+
+    if randomize:
+        shuffled = list(simplex_weights.values())
+        random.seed(4)
+        random.shuffle(shuffled)
+        simplex_weights = {spx: weight for spx,
+                           weight in zip(simplex_weights.keys(), shuffled)}
 
     return simplex_weights
 
@@ -110,8 +124,8 @@ def construct_boundary(d, r=19):
     D = scipy.sparse.csr_matrix((M, N), dtype=np.int8)
     for j in range(d + 1):
         jth_faces_ix = [
-            target_basis_ix[tuple(np.concatenate((l[:j], l[j + 1:])))]
-            for l in domain_basis]
+            target_basis_ix[tuple(np.concatenate((s[:j], s[j + 1:])))]
+            for s in domain_basis]
         D += scipy.sparse.csr_matrix(
             ([(-1)**j] * N, (jth_faces_ix, range(N))),
             shape=(M, N), dtype=np.int8)
@@ -130,11 +144,9 @@ def construct_laplacian(d, scheme='av', threshold=0):
 
     # Lu = WIa Bp Wp BTa
     BTa = construct_coboundary(d)[:, nz[d]][nz[d + 1], :]
-    Wp = construct_weight_matrix(
-        d + 1)[:, nz[d + 1]][nz[d + 1], :]
+    Wp = construct_weight_matrix(d + 1)[:, nz[d + 1]][nz[d + 1], :]
     Bp = construct_boundary(d + 1)[:, nz[d + 1]][nz[d], :]
-    WIa = construct_weight_matrix(d, inverse=True)[
-        :, nz[d]][nz[d], :]
+    WIa = construct_weight_matrix(d, inverse=True)[:, nz[d]][nz[d], :]
 
     Lu = np.multiply(WIa, np.multiply(Bp, np.multiply(Wp, BTa)))
 
@@ -150,14 +162,11 @@ def construct_laplacian(d, scheme='av', threshold=0):
     return (Ld + Lu)
 
 
-def fourier_transform(eigenvectors, vector):
-    '''returns the coordinates of a vector in the basis
-    of unit eigenvectors of the laplacian'''
-    return np.linalg.solve(eigenvectors, vector)
-
-
 # _____________________________Parameters_____________________________
 
+
+# directory where the data is
+folder = '/Users/anibal/Google Drive/information_cochains'
 
 # dimensions considered in the computation, values between 3 an 19
 dimensions = [2]  # [2, 3]
@@ -174,13 +183,29 @@ stored_eigenvectors = 10
 # types of information used for the signals
 infos = ['Oinfo']  # ['Oinfo', 'Sinfo', 'TC', 'DTC']
 
+# randomly pair (simplex: weight)
+randomize = False
+
+# normally distributed connectome weights
+gaussian_weights = True
+
 # names of patients from 001 to 164
 patients = ([f'00{i}' for i in range(1, 10)] +
             [f'0{i}' for i in range(10, 100)] +
             [f'{i}' for i in range(100, 165)])
 
 
-# _____________________________Main_____________________________
+# output structure:
+
+# dim
+#   threshold_scheme
+#     eigendata
+#       eigenvalues
+#       eigenvectors
+#     info
+#       patient
+
+# _____________________________Main___________________________________________
 
 
 for d in dimensions:
@@ -193,10 +218,12 @@ for d in dimensions:
             eigenvalues, eigenvectors = np.linalg.eig(L.todense())
             time2 = perf_counter()
             os.makedirs(f'dim{d}/{scheme}_thresh{threshold}/eigendata')
-            np.save(f'dim{d}/{scheme}_thresh{threshold}/eigendata/eigenvalues.npy',
-                    eigenvalues)
-            np.save(f'dim{d}/{scheme}_thresh{threshold}/eigendata/eigenvectors.npy',
-                    np.argsort(eigenvalues)[:stored_eigenvectors])
+            np.save(
+                f'dim{d}/{scheme}_thresh{threshold}/eigendata/eigenvalues.npy',
+                eigenvalues)
+            np.save(
+                f'dim{d}/{scheme}_thresh{threshold}/eigendata/eigenvectors.npy',
+                np.argsort(eigenvalues)[:stored_eigenvectors])
 
             # fourier transforming the information cochains
 
@@ -213,8 +240,8 @@ for d in dimensions:
                 X = np.linalg.solve(eigenvectors, B)
                 time3 = perf_counter()
 
-                print(
-                    f"dim {d} - threshold: {threshold} - scheme: {scheme} - info: {info}")
+                print(f"dim {d} - threshold: {threshold} - scheme: {scheme} - info: {info} - " +
+                      f"randomized pairing: {randomize} - gaussian weights: {gaussian_weights}")
                 print('construct:', time1 - time0, 'diagonalize:',
                       time2 - time1, 'solve all:', time3 - time2)
 
