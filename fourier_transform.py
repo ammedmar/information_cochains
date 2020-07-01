@@ -11,13 +11,14 @@ into the Fourier basis.
 
 import numpy as np
 import scipy.io
-from itertools import combinations
-from scipy.special import comb
+import random
 import os
 import warnings
-warnings.filterwarnings('ignore', message='divide by zero')
+from itertools import combinations
+from scipy.special import comb
 from time import perf_counter
-import random
+from scipy.stats import gamma
+warnings.filterwarnings('ignore', message='divide by zero')
 
 
 def import_data(patient, d=3):
@@ -45,12 +46,11 @@ def construct_edge_weights():
     conn = scipy.io.loadmat(filename)
     SC = conn['sc'].sum(axis=2) / 161
 
-    if gaussian_weights:
-        s = SC.std()
-        m = SC.mean()
-        np.random.seed(1)
-        SC = np.random.normal(loc=m, scale=s, size=(20, 20))
-        SC = np.absolute(SC)
+    if gamma_weights:
+        SC.shape
+        size = SC.flatten().shape[0]
+        a, _, _ = gamma.fit(SC)
+        SC = gamma.rvs(a, size=size, random_state=123).reshape(SC.shape)
 
     edge_weights = {}
     for i in range(20):
@@ -187,7 +187,7 @@ infos = ['Oinfo']  # ['Oinfo', 'Sinfo', 'TC', 'DTC']
 randomize = False
 
 # normally distributed connectome weights
-gaussian_weights = True
+gamma_weights = True
 
 # names of patients from 001 to 164
 patients = ([f'00{i}' for i in range(1, 10)] +
@@ -244,7 +244,7 @@ for d in dimensions:
                 time3 = perf_counter()
 
                 print(f"dim {d} - threshold: {threshold} - scheme: {scheme} - info: {info} - " +
-                      f"randomized pairing: {randomize} - gaussian weights: {gaussian_weights}")
+                      f"randomized pairing: {randomize} - gamma weights: {gamma_weights}")
                 print('construct:', time1 - time0, 'diagonalize:',
                       time2 - time1, 'solve all:', time3 - time2)
 
